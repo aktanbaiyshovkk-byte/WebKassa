@@ -10,6 +10,7 @@ import {
   Database, 
   LogOut, 
   User, 
+  Users,
   ShieldAlert, 
   BookOpen, 
   Store as StoreIcon, 
@@ -24,6 +25,7 @@ import InventoryManager from './components/InventoryManager';
 import SalesHistory from './components/SalesHistory';
 import LoginScreen from './components/LoginScreen';
 import DebtorsManager from './components/DebtorsManager';
+import EmployeesManager from './components/EmployeesManager';
 import PortalScreen from './components/PortalScreen';
 import SuperAdminDashboard from './components/SuperAdminDashboard';
 import AppGatekeeper from './components/AppGatekeeper';
@@ -246,7 +248,7 @@ export default function App() {
   
   // Scanned barcode relay state
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'register' | 'inventory' | 'history' | 'debtors'>('register');
+  const [activeTab, setActiveTab] = useState<'register' | 'inventory' | 'history' | 'debtors' | 'employees'>('register');
   const [showResetConfirmModal, setShowResetConfirmModal] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -638,6 +640,34 @@ export default function App() {
       const store = stores.find(s => s.id === currentStoreId);
       if (store) {
         addSystemLog(currentStoreId, store.name, `Удален профиль сотрудника: ${userToDelete.name} (${userToDelete.role === 'admin' ? 'Администратор' : 'Продавец'}).`, 'user');
+      }
+    }
+  };
+
+  // Update user PIN/profile inside active store terminal
+  const handleUpdateUserPin = (userId: string, newPin: string) => {
+    const targetUser = users.find(u => u.id === userId);
+    if (!targetUser) return;
+
+    const updatedUsers = users.map(u => u.id === userId ? { ...u, pin: newPin } : u);
+    setUsers(updatedUsers);
+
+    // If active logged in user's PIN is changed, update currentUser in state and sessionStorage so login remains valid
+    if (currentUser && currentUser.id === userId) {
+      const updatedMe = { ...currentUser, pin: newPin };
+      setCurrentUser(updatedMe);
+      sessionStorage.setItem('pos_current_user', JSON.stringify(updatedMe));
+    }
+
+    if (currentStoreId) {
+      setStores(prev => {
+        const nextStores = prev.map(s => s.id === currentStoreId ? { ...s, users: updatedUsers } : s);
+        localStorage.setItem('pos_cloud_stores', JSON.stringify(nextStores));
+        return nextStores;
+      });
+      const store = stores.find(s => s.id === currentStoreId);
+      if (store) {
+        addSystemLog(currentStoreId, store.name, `Изменен PIN-код сотрудника: ${targetUser.name} (${targetUser.role === 'admin' ? 'Администратор' : 'Продавец'}).`, 'user');
       }
     }
   };
@@ -1207,6 +1237,32 @@ export default function App() {
               </div>
             )}
 
+            {/* Tab: Employees Manager (Role check) */}
+            {isAdmin ? (
+              <button
+                onClick={() => setActiveTab('employees')}
+                className={`py-3.5 px-5 text-sm font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'employees'
+                    ? 'border-indigo-600 text-indigo-700 font-extrabold bg-indigo-50/10'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-200'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                {t('tabEmployees')}
+              </button>
+            ) : (
+              <div 
+                className="py-3.5 px-5 text-xs font-semibold border-b-2 border-transparent text-slate-300 flex items-center gap-2 select-none cursor-not-allowed"
+                title={t('tabRestrictedDesc')}
+              >
+                <Users className="w-4 h-4 text-slate-300/60" />
+                <span className="line-through text-slate-400 font-normal">{t('tabEmployees')}</span>
+                <span className="text-[9px] font-black tracking-wide uppercase bg-slate-100/80 text-slate-400 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                  🔐 lock
+                </span>
+              </div>
+            )}
+
           </div>
         </div>
       </nav>
@@ -1277,8 +1333,22 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB 5: EMPLOYEES MANAGER & PIN EDITOR - Admin only guard */}
+        {activeTab === 'employees' && isAdmin && currentUser && (
+          <div className="animate-[fadeIn_0.21s_ease-out]">
+            <EmployeesManager
+              users={users}
+              currentUser={currentUser}
+              onCreateUser={handleCreateUser}
+              onDeleteUser={handleDeleteUser}
+              onUpdateUserPin={handleUpdateUserPin}
+              lang={lang}
+            />
+          </div>
+        )}
+
         {/* ACCESS DENIED PLACEHOLDER if somehow someone ends up on a restricted tab */}
-        {((activeTab === 'inventory' || activeTab === 'history' || activeTab === 'debtors') && !isAdmin) && (
+        {((activeTab === 'inventory' || activeTab === 'history' || activeTab === 'debtors' || activeTab === 'employees') && !isAdmin) && (
           <div className="bg-white border border-slate-150 p-12 text-center rounded-2xl shadow-sm flex flex-col items-center justify-center gap-4 max-w-md mx-auto my-12">
             <div className="w-14 h-14 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center shadow-sm select-none">
               <ShieldAlert className="w-8 h-8" />
